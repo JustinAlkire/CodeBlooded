@@ -1,0 +1,25 @@
+{
+  "name": "codeblooded",
+  "version": "1.0.0",
+  "description": "A full-stack web application that helps students easily find professors’ office hours, schedule meetings, and leave feedback — reducing confusion, saving time, and improving communication between faculty and students.",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon app.mjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JustinAlkire/CodeBlooded.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/JustinAlkire/CodeBlooded/issues"
+  },
+  "homepage": "https://github.com/JustinAlkire/CodeBlooded#readme",
+  "dependencies": {
+    "express": "^5.1.0",
+    "nodemon": "^3.1.10"
+  }
+}
