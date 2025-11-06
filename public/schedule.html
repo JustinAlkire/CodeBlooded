@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professor Schedule</title>
+
+    <link rel="stylesheet" href="styles/schedule.css">
+</head>
+<body>
+    <div class="container">
+        <div class="professor-card">
+            <div class="professor-header">
+                <div class="professor-avatar">DS</div>
+                <div class="professor-info">
+                    <h1>Dr. Sarah Johnson</h1>
+                    <p>Professor of Computer Science</p>
+                </div>
+            </div>
+
+            <div class="contact-grid">
+                <div class="contact-item">
+                    <div class="contact-icon">📧</div>
+                    <div class="contact-details">
+                        <div class="contact-label">Email</div>
+                        <div class="contact-value">sarah.johnson@university.edu</div>
+                    </div>
+                </div>
+
+                <div class="contact-item">
+                    <div class="contact-icon">📞</div>
+                    <div class="contact-details">
+                        <div class="contact-label">Phone</div>
+                        <div class="contact-value">(555) 123-4567</div>
+                    </div>
+                </div>
+
+                <div class="contact-item">
+                    <div class="contact-icon">🕐</div>
+                    <div class="contact-details">
+                        <div class="contact-label">Office Hours</div>
+                        <div class="contact-value">Mon-Fri, 9:00 AM - 5:00 PM</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="calendar-card">
+            <div class="calendar-header">
+                <h2>Office Hours Schedule</h2>
+                <div class="week-navigation">
+                    <button class="nav-button" onclick="changeWeek(-1)">← Previous</button>
+                    <span class="current-week" id="currentWeek"></span>
+                    <button class="nav-button" onclick="changeWeek(1)">Next →</button>
+                </div>
+            </div>
+
+            <div class="calendar-grid" id="calendarGrid"></div>
+
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color available"></div>
+                    <span>Available</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color booked"></div>
+                    <span>Booked</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color selected"></div>
+                    <span>Selected</span>
+                </div>
+            </div>
+
+            <div class="booking-panel" id="bookingPanel">
+                <h3>Book Office Hour</h3>
+                <div class="booking-details" id="bookingDetails"></div>
+                <div class="booking-actions">
+                    <button class="btn btn-primary" onclick="confirmBooking()">Confirm Booking</button>
+                    <button class="btn btn-secondary" onclick="cancelBooking()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="scripts/schedule.js"></script>
+</body>
+</html>
