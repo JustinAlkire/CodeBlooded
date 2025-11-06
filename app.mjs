@@ -26,6 +26,10 @@ app.get('/professors', (req, res) => {
   res.sendFile(join(__dirname, 'public', 'professors.html'));
 });
 
+app.get('/schedule', (req, res) => {
+  res.sendFile(join(__dirname, 'public', 'schedule.html'));
+});
+
 // Login API endpoint
 app.post('/api/auth/login', async (req, res) => {
   try {
