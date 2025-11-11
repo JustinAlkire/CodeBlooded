@@ -10,9 +10,24 @@ const app = express()
 const PORT = process.env.PORT || 3000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const GRID_DAYS = ["Mon","Tue","Wed","Thu","Fri"];
+const GRID_TIMES = ["9:00 AM","10:00 AM","11:00 AM","12:00 PM","1:00 PM","2:00 PM","3:00 PM","4:00 PM"];
+
+const labelToMinutes = (label) => {
+  const [t, ap] = label.split(" ");
+  let [h, m] = t.split(":").map(Number);
+  if (ap === "PM" && h !== 12) h += 12;
+  if (ap === "AM" && h === 12) h = 0;
+  return h*60 + m;
+};
+const timeToMinutes = (hhmm) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h*60 + m;
+};
 
 app.use(express.static(join(__dirname, 'public')));
 app.use('/scripts', express.static(join(__dirname, 'scripts')));
+app.use("/styles", express.static("styles"));
 app.use(express.json());
 
 // Call function from db/mongo.mjs
@@ -27,6 +42,38 @@ app.get('/professors', (req, res) => {
   res.sendFile(join(__dirname, 'public', 'professors.html'));
 });
 
+// get professor's schedule by professor id
+app.get("/api/professors/:id/schedule", async (req, res) => {
+  try {
+    const db = getDB();
+    const _id = new ObjectId(req.params.id);
+    const prof = await db.collection("Professors").findOne(
+      { _id },
+      { projection: { officeHoursTemplate: 1 } }
+    );
+    if (!prof) return res.status(404).json({ error: "Professor not found" });
+
+    const tmpl = prof.officeHoursTemplate || {};
+    const slots = [];
+
+    // precompute label to minutes map
+    const labelMinutes = Object.fromEntries(GRID_TIMES.map(l => [l, labelToMinutes(l)]));
+
+    for (const day of GRID_DAYS) {
+      const ranges = (tmpl[day] || []).map(([a,b]) => [timeToMinutes(a), timeToMinutes(b)]);
+      for (const label of GRID_TIMES) {
+        const startMin = labelMinutes[label];
+        const inRange = ranges.some(([s,e]) => startMin >= s && startMin < e);
+        slots.push({ day, time: label, status: inRange ? "available" : "booked" });
+      }
+    }
+
+    res.json({ professorId: _id, slots });
+  } catch {
+    res.status(400).json({ error: "Invalid id" });
+  }
+});
+
 app.get('/schedule', (req, res) => {
   res.sendFile(join(__dirname, 'public', 'schedule.html'));
 });
@@ -39,6 +86,22 @@ app.get('/api/professors', async (_req, res) => {
     res.json(profs);
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch professors: ' + e.message });
+  }
+});
+
+// get one professor by id
+app.get("/api/professors/:id", async (req, res) => {
+  try {
+    const db = getDB();
+    const _id = new ObjectId(req.params.id);
+    const prof = await db.collection("Professors").findOne(
+      { _id },
+      { projection: { name: 1, department: 1, office: 1, email: 1, officeHoursTemplate: 1, timezone: 1 } }
+    );
+    if (!prof) return res.status(404).json({ error: "Professor not found" });
+    res.json(prof);
+  } catch {
+    res.status(400).json({ error: "Invalid id" });
   }
 });
 

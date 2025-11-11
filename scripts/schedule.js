@@ -1,154 +1,171 @@
-let currentWeekOffset = 0
-let selectedSlot = null
-const bookedSlots = new Set([
-  "Mon-10:00 AM",
-  "Mon-2:00 PM",
-  "Tue-11:00 AM",
-  "Wed-1:00 PM",
-  "Thu-3:00 PM",
-  "Fri-10:00 AM",
-])
+// populate professor office hours schedule and handle booking
+const timeSlots = [
+  "9:00 AM","10:00 AM","11:00 AM","12:00 PM",
+  "1:00 PM","2:00 PM","3:00 PM","4:00 PM"
+];
+const daysOfWeek = ["Mon","Tue","Wed","Thu","Fri"];
 
-const timeSlots = ["9:00 AM", "10:00 AM", "11:00 AM", "12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM"]
+let currentWeekOffset = 0;
+let prof = null;
+let slotsFromDb = []; 
+let selectedSlot = null;
 
-const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+function getParam(name){ return new URL(location.href).searchParams.get(name); }
+function qs(id){ return document.getElementById(id); }
 
-function initCalendar() {
-  updateWeekDisplay()
-  renderCalendar()
-}
+// load professor and schedule data
+async function load() {
+  const id = getParam("professorId");
+  if (!id) { alert("Missing professorId"); return; }
 
-function getWeekDates() {
-  const today = new Date()
-  const currentDay = today.getDay()
-  const diff = currentDay === 0 ? -6 : 1 - currentDay
+  const [pRes, sRes] = await Promise.all([
+    fetch(`/api/professors/${encodeURIComponent(id)}`),
+    fetch(`/api/professors/${encodeURIComponent(id)}/schedule`)
+  ]);
 
-  const monday = new Date(today)
-  monday.setDate(today.getDate() + diff + currentWeekOffset * 7)
-
-  const dates = []
-  for (let i = 0; i < 5; i++) {
-    const date = new Date(monday)
-    date.setDate(monday.getDate() + i)
-    dates.push(date)
+  if (!pRes.ok) {
+    const t = await pRes.text().catch(()=> "");
+    throw new Error(`Professor fetch failed: ${pRes.status} ${t}`);
+  }
+  if (!sRes.ok) {
+    const t = await sRes.text().catch(()=> "");
+    throw new Error(`Schedule fetch failed: ${sRes.status} ${t}`);
   }
 
-  return dates
+  prof = await pRes.json();
+  const schedule = await sRes.json();
+  slotsFromDb = Array.isArray(schedule.slots) ? schedule.slots : [];
+
+  // header info
+  const initials = (prof.name || "?")
+    .split(" ").map(w => w[0]).filter(Boolean).slice(0,2).join("").toUpperCase();
+  qs("profAvatar").textContent = initials;
+  qs("profName").textContent = prof.name || "Professor";
+  qs("profDept").textContent = prof.department || "";
+  qs("profEmail").textContent = prof.email || "";
+  qs("profOffice").textContent = prof.office || "";
+
+  updateWeekDisplay();
+  renderCalendar();
+}
+
+// week date calculations
+function getWeekDates() {
+  const today = new Date();
+  const dow = today.getDay(); 
+  const deltaToMon = dow === 0 ? -6 : 1 - dow;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + deltaToMon + currentWeekOffset*7);
+  return Array.from({length:5}, (_,i)=> new Date(
+    monday.getFullYear(), monday.getMonth(), monday.getDate()+i
+  ));
 }
 
 function updateWeekDisplay() {
-  const dates = getWeekDates()
-  const startDate = dates[0]
-  const endDate = dates[4]
-
-  const options = { month: "short", day: "numeric" }
-  const weekText = `${startDate.toLocaleDateString("en-US", options)} - ${endDate.toLocaleDateString("en-US", options)}`
-
-  document.getElementById("currentWeek").textContent = weekText
+  const days = getWeekDates();
+  const start = days[0];
+  const end = days[4];
+  const fmt = { month:"short", day:"numeric" };
+  qs("currentWeek").textContent =
+    `${start.toLocaleDateString("en-US", fmt)} - ${end.toLocaleDateString("en-US", fmt)}`;
 }
 
+// slot status check
+function isBooked(day, time) {
+  const s = slotsFromDb.find(x => x.day === day && x.time === time);
+  return s?.status === "booked";
+}
+
+// render calendar grid
 function renderCalendar() {
-  const calendarGrid = document.getElementById("calendarGrid")
-  calendarGrid.innerHTML = ""
+  const grid = qs("calendarGrid");
+  grid.innerHTML = "";
+  const dates = getWeekDates();
 
-  const dates = getWeekDates()
+  daysOfWeek.forEach((day, idx) => {
+    const col = document.createElement("div");
+    col.className = "day-column";
 
-  daysOfWeek.forEach((day, index) => {
-    const dayColumn = document.createElement("div")
-    dayColumn.className = "day-column"
+    col.innerHTML = `
+      <div class="day-header">
+        <div class="day-name">${day}</div>
+        <div class="day-date">${dates[idx].getDate()}</div>
+      </div>
+      <div class="time-slots" id="slots-${day}"></div>
+    `;
+    grid.appendChild(col);
 
-    const date = dates[index]
-    const dateStr = date.getDate()
+    const container = qs(`slots-${day}`);
 
-    dayColumn.innerHTML = `
-            <div class="day-header">
-                <div class="day-name">${day}</div>
-                <div class="day-date">${dateStr}</div>
-            </div>
-            <div class="time-slots" id="slots-${day}"></div>
-        `
+    timeSlots.forEach(time => {
+      const booked = isBooked(day, time);
+      const el = document.createElement("div");
+      el.className = `time-slot ${booked ? "booked" : "available"}`;
+      el.textContent = time;
+      el.dataset.day = day;
+      el.dataset.time = time;
 
-    calendarGrid.appendChild(dayColumn)
+      if (!booked) el.onclick = () => selectSlot(el);
 
-    const slotsContainer = document.getElementById(`slots-${day}`)
-    timeSlots.forEach((time) => {
-      const slotKey = `${day}-${time}`
-      const isBooked = bookedSlots.has(slotKey)
-
-      const slot = document.createElement("div")
-      slot.className = `time-slot ${isBooked ? "booked" : "available"}`
-      slot.textContent = time
-      slot.dataset.day = day
-      slot.dataset.time = time
-      slot.dataset.slotKey = slotKey
-
-      if (!isBooked) {
-        slot.onclick = () => selectSlot(slot)
-      }
-
-      slotsContainer.appendChild(slot)
-    })
-  })
+      container.appendChild(el);
+    });
+  });
 }
 
-function selectSlot(slotElement) {
-  const previousSelected = document.querySelector(".time-slot.selected")
-  if (previousSelected) {
-    previousSelected.classList.remove("selected")
-    previousSelected.classList.add("available")
-  }
+// slot selection and booking
+function selectSlot(el) {
+  const prev = document.querySelector(".time-slot.selected");
+  if (prev) prev.classList.remove("selected");
 
-  slotElement.classList.remove("available")
-  slotElement.classList.add("selected")
+  el.classList.add("selected");
+  selectedSlot = { day: el.dataset.day, time: el.dataset.time };
 
-  selectedSlot = {
-    day: slotElement.dataset.day,
-    time: slotElement.dataset.time,
-    slotKey: slotElement.dataset.slotKey,
-  }
+  const dates = getWeekDates();
+  const date = dates[daysOfWeek.indexOf(selectedSlot.day)];
+  const dateStr = date.toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric"
+  });
 
-  const bookingPanel = document.getElementById("bookingPanel")
-  const bookingDetails = document.getElementById("bookingDetails")
-
-  const dates = getWeekDates()
-  const dayIndex = daysOfWeek.indexOf(selectedSlot.day)
-  const date = dates[dayIndex]
-  const dateStr = date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
-
-  bookingDetails.innerHTML = `
-        <p><strong>Day:</strong> ${dateStr}</p>
-        <p><strong>Time:</strong> ${selectedSlot.time}</p>
-        <p><strong>Professor:</strong> Dr. Sarah Johnson</p>
-    `
-
-  bookingPanel.classList.add("active")
+  qs("bookingDetails").innerHTML = `
+    <p><strong>Day:</strong> ${dateStr}</p>
+    <p><strong>Time:</strong> ${selectedSlot.time}</p>
+    <p><strong>Professor:</strong> ${prof?.name || "Professor"}</p>
+  `;
+  qs("bookingPanel").classList.add("active");
 }
 
 function confirmBooking() {
-  if (selectedSlot) {
-    bookedSlots.add(selectedSlot.slotKey)
-    alert(`Office hour booked successfully for ${selectedSlot.day} at ${selectedSlot.time}!`)
-    cancelBooking()
-    renderCalendar()
-  }
+  if (!selectedSlot) return;
+
+  // mark slot as booked 
+  const i = slotsFromDb.findIndex(s => s.day === selectedSlot.day && s.time === selectedSlot.time);
+  if (i >= 0) slotsFromDb[i].status = "booked";
+  else slotsFromDb.push({ day: selectedSlot.day, time: selectedSlot.time, status: "booked" });
+
+  alert(`Booked ${selectedSlot.day} at ${selectedSlot.time}`);
+  cancelBooking();
+  renderCalendar();
 }
 
 function cancelBooking() {
-  const previousSelected = document.querySelector(".time-slot.selected")
-  if (previousSelected) {
-    previousSelected.classList.remove("selected")
-    previousSelected.classList.add("available")
-  }
-
-  selectedSlot = null
-  document.getElementById("bookingPanel").classList.remove("active")
+  const prev = document.querySelector(".time-slot.selected");
+  if (prev) prev.classList.remove("selected");
+  selectedSlot = null;
+  qs("bookingPanel").classList.remove("active");
 }
 
+// week nav 
 function changeWeek(offset) {
-  currentWeekOffset += offset
-  updateWeekDisplay()
-  renderCalendar()
-  cancelBooking()
+  currentWeekOffset += offset;
+  updateWeekDisplay();
+  renderCalendar();
+  cancelBooking();
 }
 
-document.addEventListener("DOMContentLoaded", initCalendar)
+// bootstrap load
+document.addEventListener("DOMContentLoaded", load);
+
+// expose handlers
+window.changeWeek = changeWeek;
+window.confirmBooking = confirmBooking;
+window.cancelBooking = cancelBooking;
