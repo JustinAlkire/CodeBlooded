@@ -12,6 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 app.use(express.static(join(__dirname, 'public')));
+app.use('/scripts', express.static(join(__dirname, 'scripts')));
 app.use(express.json());
 
 // Call function from db/mongo.mjs
@@ -28,6 +29,17 @@ app.get('/professors', (req, res) => {
 
 app.get('/schedule', (req, res) => {
   res.sendFile(join(__dirname, 'public', 'schedule.html'));
+});
+
+// read professors
+app.get('/api/professors', async (_req, res) => {
+  try {
+    const db = getDB();
+    const profs = await db.collection('Professors').find({}).toArray();
+    res.json(profs);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch professors: ' + e.message });
+  }
 });
 
 // Login API endpoint
