@@ -14,7 +14,7 @@ function showMessage(message, type = 'info') {
 
 async function loadProfessors() {
     const tbody = document.getElementById('professorsBody');
-    tbody.innerHTML = `<tr><td colspan="5" class="text-muted">Loading…</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="text-muted">Loading…</td></tr>`;
 
     try {
         const response = await fetch('/api/professors');
@@ -26,7 +26,7 @@ async function loadProfessors() {
         }
 
         if (!Array.isArray(profs) || profs.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="text-muted">No professors found.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" class="text-muted">No professors found.</td></tr>`;
             showMessage('No professors found', 'info');
             return;
         }
@@ -45,10 +45,20 @@ async function loadProfessors() {
     `).join('');
 
     } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-danger">Error loading data</td></tr>`;
-        showMessage(`❌ Error: ${escapeHtml(error.message)}`, 'danger');
+        tbody.innerHTML = `<tr><td colspan="4" class="text-danger">Error loading data</td></tr>`;
+        showMessage(`❌ Error: ${error.message}`, 'danger');
     }
 }
 
-// initial load
+// Logout functionality
+function handleLogout() {
+    // Clear any client-side storage
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Redirect to login page
+    window.location.href = '/login.html';
+}
+
+// Wire up initial load
 window.addEventListener('load', loadProfessors);
