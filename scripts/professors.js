@@ -44,13 +44,11 @@ async function loadProfessors() {
       </tr>
     `).join('');
 
-        showMessage(`📋 Loaded ${profs.length} professors`, 'success');
     } catch (error) {
         tbody.innerHTML = `<tr><td colspan="5" class="text-danger">Error loading data</td></tr>`;
         showMessage(`❌ Error: ${escapeHtml(error.message)}`, 'danger');
     }
 }
 
-// Wire up refresh and initial load
+// initial load
 window.addEventListener('load', loadProfessors);
-document.getElementById('refreshBtn')?.addEventListener('click', loadProfessors);
