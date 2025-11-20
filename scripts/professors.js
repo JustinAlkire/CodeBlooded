@@ -44,7 +44,6 @@ async function loadProfessors() {
       </tr>
     `).join('');
 
-        showMessage(`📋 Loaded ${profs.length} professors`, 'success');
     } catch (error) {
         tbody.innerHTML = `<tr><td colspan="4" class="text-danger">Error loading data</td></tr>`;
         showMessage(`❌ Error: ${error.message}`, 'danger');
