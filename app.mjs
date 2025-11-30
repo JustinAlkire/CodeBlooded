@@ -56,15 +56,52 @@ app.get("/api/professors/:id/schedule", async (req, res) => {
     const tmpl = prof.officeHoursTemplate || {};
     const slots = [];
 
-    // precompute label to minutes map
-    const labelMinutes = Object.fromEntries(GRID_TIMES.map(l => [l, labelToMinutes(l)]));
+    // Helper to convert HH:MM to minutes
+    const timeToMinutes = (hhmm) => {
+      const [h, m] = hhmm.split(":").map(Number);
+      return h * 60 + m;
+    };
 
+    // Helper to convert minutes to HH:MM AM/PM format
+    // Lowkey messy but semi works
+    const minutesToLabel = (minutes) => {
+      let h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      let ap = "AM";
+      
+      if (h >= 12) {
+        ap = "PM";
+        if (h > 12) h -= 12;
+      } else if (h === 0) {
+        h = 12;
+      }
+      
+      const mStr = m === 0 ? "00" : m;
+      return `${h}:${mStr} ${ap}`;
+    };
+
+    // Generate a slot(s) for each day
     for (const day of GRID_DAYS) {
-      const ranges = (tmpl[day] || []).map(([a,b]) => [timeToMinutes(a), timeToMinutes(b)]);
-      for (const label of GRID_TIMES) {
-        const startMin = labelMinutes[label];
-        const inRange = ranges.some(([s,e]) => startMin >= s && startMin < e);
-        slots.push({ day, time: label, status: inRange ? "available" : "booked" });
+      const ranges = tmpl[day] || [];
+      if (ranges.length > 0) {
+        ranges.forEach(([startTime, endTime]) => {
+          const startMin = timeToMinutes(startTime);
+          const endMin = timeToMinutes(endTime);
+          
+          // Generate slots at 15-minute intervals
+          // instead of just the whole hour blocks
+          for (let currentMin = startMin; currentMin < endMin; currentMin += 15) {
+            const slotStart = minutesToLabel(currentMin);
+            const slotEnd = minutesToLabel(currentMin + 15);
+            
+            slots.push({ 
+              day, 
+              startTime: slotStart,
+              endTime: slotEnd,
+              status: "available" 
+            });
+          }
+        });
       }
     }
 
@@ -194,6 +231,184 @@ app.post('/api/auth/register', async (req, res) => {
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Server error during registration. Please try again.' });
+  }
+});
+
+// Get all bookings for a professor
+app.get('/api/professors/:professorId/bookings', async (req, res) => {
+  try {
+    const db = getDB();
+    const professorId = new ObjectId(req.params.professorId);
+    
+    // Get professor's office hours template
+    const prof = await db.collection('Professors').findOne(
+      { _id: professorId },
+      { projection: { officeHoursTemplate: 1 } }
+    );
+    
+    if (!prof) {
+      return res.status(404).json({ error: 'Professor not found' });
+    }
+    
+    const bookings = await db.collection('Bookings').find({
+      professorId: professorId.toString()
+    }).toArray();
+    
+    res.json({ 
+      professorId: professorId.toString(),
+      officeHoursTemplate: prof.officeHoursTemplate,
+      bookings 
+    });
+  } catch (error) {
+    console.error('Error fetching bookings:', error);
+    res.status(500).json({ error: 'Failed to fetch bookings' });
+  }
+});
+
+// Create a new booking
+app.post('/api/professors/:professorId/bookings', async (req, res) => {
+  try {
+    const db = getDB();
+    const { day, startTime, endTime, studentId, studentName, studentEmail } = req.body;
+    const professorId = new ObjectId(req.params.professorId);
+
+    // Validate input
+    if (!day || !startTime || !endTime) {
+      return res.status(400).json({ error: 'Day, startTime, and endTime are required' });
+    }
+
+    // Helper to convert HH:MM AM/PM to minutes
+    // Again, messy but works
+    const timeToMinutes = (timeStr) => {
+      // Handle both "10:45 AM" and "10:45" formats
+      const parts = timeStr.trim().split(' ');
+      const timePart = parts[0];
+      const ap = parts[1];
+      
+      const [h, m] = timePart.split(':').map(Number);
+      let hours = h;
+      
+      if (ap === 'PM' && h !== 12) {
+        hours = h + 12;
+      } else if (ap === 'AM' && h === 12) {
+        hours = 0;
+      }
+      
+      return hours * 60 + m;
+    };
+
+    // Get professor and validate office hours
+    const prof = await db.collection('Professors').findOne({ _id: professorId });
+    if (!prof || !prof.officeHoursTemplate) {
+      return res.status(404).json({ error: 'Professor not found' });
+    }
+
+    // Validate that the requested time falls within office hours
+    const officeHours = prof.officeHoursTemplate[day];
+    if (!officeHours || officeHours.length === 0) {
+      return res.status(400).json({ error: `Professor has no office hours on ${day}` });
+    }
+
+    const reqStartMin = timeToMinutes(startTime);
+    const reqEndMin = timeToMinutes(endTime);
+
+    // Check if requested time is within any office hour range
+    const validTime = officeHours.some(([start, end]) => {
+      const startMin = timeToMinutes(start);
+      const endMin = timeToMinutes(end);
+      return reqStartMin >= startMin && reqEndMin <= endMin;
+    });
+
+    if (!validTime) {
+      return res.status(400).json({ error: 'Requested time is not within professor office hours' });
+    }
+
+    // Check if slot is already booked
+    const existingBooking = await db.collection('Bookings').findOne({
+      professorId: professorId.toString(),
+      day,
+      startTime,
+      endTime
+    });
+
+    if (existingBooking) {
+      return res.status(409).json({ error: 'Time slot already booked' });
+    }
+
+    // Create booking
+    const booking = {
+      professorId: professorId.toString(),
+      day,
+      startTime,
+      endTime,
+      studentId: studentId || null,
+      studentName: studentName || 'Anonymous',
+      studentEmail: studentEmail || null,
+      createdAt: new Date(),
+      status: 'confirmed'
+    };
+
+    const result = await db.collection('Bookings').insertOne(booking);
+
+    res.status(201).json({
+      success: true,
+      bookingId: result.insertedId,
+      message: 'Booking confirmed',
+      booking
+    });
+  } catch (error) {
+    console.error('Error creating booking:', error);
+    res.status(500).json({ error: 'Failed to create booking' });
+  }
+});
+
+// Delete a booking
+app.delete('/api/bookings/:bookingId', async (req, res) => {
+  try {
+    const db = getDB();
+    const bookingId = new ObjectId(req.params.bookingId);
+
+    const result = await db.collection('Bookings').deleteOne({ _id: bookingId });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    res.json({ success: true, message: 'Booking cancelled' });
+  } catch (error) {
+    console.error('Error deleting booking:', error);
+    res.status(500).json({ error: 'Failed to cancel booking' });
+  }
+});
+
+// Update a booking
+app.put('/api/bookings/:bookingId', async (req, res) => {
+  try {
+    const db = getDB();
+    const bookingId = new ObjectId(req.params.bookingId);
+    const { day, startTime, endTime, studentName, studentEmail } = req.body;
+
+    const updateData = {};
+    if (day) updateData.day = day;
+    if (startTime) updateData.startTime = startTime;
+    if (endTime) updateData.endTime = endTime;
+    if (studentName) updateData.studentName = studentName;
+    if (studentEmail) updateData.studentEmail = studentEmail;
+    updateData.updatedAt = new Date();
+
+    const result = await db.collection('Bookings').updateOne(
+      { _id: bookingId },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    res.json({ success: true, message: 'Booking updated' });
+  } catch (error) {
+    console.error('Error updating booking:', error);
+    res.status(500).json({ error: 'Failed to update booking' });
   }
 });
 
