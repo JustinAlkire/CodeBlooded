@@ -25,7 +25,7 @@ Eliminates the repetitive, tedious task of emailing back and forth to find mutua
 ---
 
 ### 🔗 Convenient Links:
-[Wiki page](https://github.com/JustinAlkire/CodeBlooded/wiki) | [Our Product](https://github.com/JustinAlkire/CodeBlooded/wiki/%F0%9F%92%ADPRODUCT-OVERVIEW) | [Official Link](http://officehours.barrycumbie.com/login.html
+[Wiki page](https://github.com/JustinAlkire/CodeBlooded/wiki) | [Our Product](https://github.com/JustinAlkire/CodeBlooded/wiki/%F0%9F%92%ADPRODUCT-OVERVIEW) | [Official Link](http://officehours.barrycumbie.com/login.html)
 
 ### Product Demo:
 
@@ -34,3 +34,4 @@ Eliminates the repetitive, tedious task of emailing back and forth to find mutua
 3. [Google Cloud](https://github.com/JustinAlkire/CodeBlooded/wiki/Google-Cloud)
 4. [Issue Example](https://github.com/JustinAlkire/CodeBlooded/issues/15)
 5. [Sprint 99](https://github.com/JustinAlkire/CodeBlooded/wiki/Sprint-9%EF%B8%8F%E2%83%A39%EF%B8%8F%E2%83%A3)
+6. [Ci/CD Guide](https://github.com/JustinAlkire/CodeBlooded/wiki/%F0%9F%8E%AFGUIDELINES-&-RESOURCES)
