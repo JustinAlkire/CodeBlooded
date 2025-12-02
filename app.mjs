@@ -5,24 +5,25 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { ObjectId } from 'mongodb';
 import bcrypt from 'bcrypt';
+import { sendEmail } from './mailer.mjs'
 
 const app = express()
 const PORT = process.env.PORT || 3000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const GRID_DAYS = ["Mon","Tue","Wed","Thu","Fri"];
-const GRID_TIMES = ["9:00 AM","10:00 AM","11:00 AM","12:00 PM","1:00 PM","2:00 PM","3:00 PM","4:00 PM"];
+const GRID_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const GRID_TIMES = ["9:00 AM", "10:00 AM", "11:00 AM", "12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM"];
 
 const labelToMinutes = (label) => {
   const [t, ap] = label.split(" ");
   let [h, m] = t.split(":").map(Number);
   if (ap === "PM" && h !== 12) h += 12;
   if (ap === "AM" && h === 12) h = 0;
-  return h*60 + m;
+  return h * 60 + m;
 };
 const timeToMinutes = (hhmm) => {
   const [h, m] = hhmm.split(":").map(Number);
-  return h*60 + m;
+  return h * 60 + m;
 };
 
 app.use(express.static(join(__dirname, 'public')));
@@ -68,14 +69,14 @@ app.get("/api/professors/:id/schedule", async (req, res) => {
       let h = Math.floor(minutes / 60);
       const m = minutes % 60;
       let ap = "AM";
-      
+
       if (h >= 12) {
         ap = "PM";
         if (h > 12) h -= 12;
       } else if (h === 0) {
         h = 12;
       }
-      
+
       const mStr = m === 0 ? "00" : m;
       return `${h}:${mStr} ${ap}`;
     };
@@ -87,18 +88,18 @@ app.get("/api/professors/:id/schedule", async (req, res) => {
         ranges.forEach(([startTime, endTime]) => {
           const startMin = timeToMinutes(startTime);
           const endMin = timeToMinutes(endTime);
-          
+
           // Generate slots at 15-minute intervals
           // instead of just the whole hour blocks
           for (let currentMin = startMin; currentMin < endMin; currentMin += 15) {
             const slotStart = minutesToLabel(currentMin);
             const slotEnd = minutesToLabel(currentMin + 15);
-            
-            slots.push({ 
-              day, 
+
+            slots.push({
+              day,
               startTime: slotStart,
               endTime: slotEnd,
-              status: "available" 
+              status: "available"
             });
           }
         });
@@ -146,14 +147,14 @@ app.get("/api/professors/:id", async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    
+
     // Validate input
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
     const db = getDB();
-    
+
     // Find user in database
     const user = await db.collection('users').findOne({ username: username });
 
@@ -163,19 +164,19 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Compare password with hashed password using bcrypt
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    
+
     if (!isPasswordValid) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
     // Successful login
     console.log('User logged in:', username);
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       redirectTo: '/professors',
-      user: { 
-        username: user.username, 
-        id: user._id 
+      user: {
+        username: user.username,
+        id: user._id
       }
     });
 
@@ -189,7 +190,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { username, password } = req.body;
-    
+
     // Validate input
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
@@ -201,10 +202,10 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const db = getDB();
-    
+
     // Check if user already exists
     const existingUser = await db.collection('users').findOne({ username: username });
-    
+
     if (existingUser) {
       return res.status(409).json({ error: 'Username already exists' });
     }
@@ -222,8 +223,8 @@ app.post('/api/auth/register', async (req, res) => {
     const result = await db.collection('users').insertOne(newUser);
 
     console.log('New user registered:', username);
-    res.status(201).json({ 
-      success: true, 
+    res.status(201).json({
+      success: true,
       message: 'Registration successful',
       redirectTo: '/login.html'
     });
@@ -239,25 +240,25 @@ app.get('/api/professors/:professorId/bookings', async (req, res) => {
   try {
     const db = getDB();
     const professorId = new ObjectId(req.params.professorId);
-    
+
     // Get professor's office hours template
     const prof = await db.collection('Professors').findOne(
       { _id: professorId },
       { projection: { officeHoursTemplate: 1 } }
     );
-    
+
     if (!prof) {
       return res.status(404).json({ error: 'Professor not found' });
     }
-    
+
     const bookings = await db.collection('Bookings').find({
       professorId: professorId.toString()
     }).toArray();
-    
-    res.json({ 
+
+    res.json({
       professorId: professorId.toString(),
       officeHoursTemplate: prof.officeHoursTemplate,
-      bookings 
+      bookings
     });
   } catch (error) {
     console.error('Error fetching bookings:', error);
@@ -284,16 +285,16 @@ app.post('/api/professors/:professorId/bookings', async (req, res) => {
       const parts = timeStr.trim().split(' ');
       const timePart = parts[0];
       const ap = parts[1];
-      
+
       const [h, m] = timePart.split(':').map(Number);
       let hours = h;
-      
+
       if (ap === 'PM' && h !== 12) {
         hours = h + 12;
       } else if (ap === 'AM' && h === 12) {
         hours = 0;
       }
-      
+
       return hours * 60 + m;
     };
 
@@ -348,18 +349,33 @@ app.post('/api/professors/:professorId/bookings', async (req, res) => {
       status: 'confirmed'
     };
 
-    const result = await db.collection('Bookings').insertOne(booking);
+    if (prof.email) {
+      await sendEmail(
+        prof.email,
+        `New Appointment Booked: ${day} ${startTime}-${endTime}`,
+        `Hi ${prof.name || 'Professor'},\n\n` +
+        `A student has booked an appointment.\n\n` +
+        `Student: ${studentName || 'Anonymous'}\n` +
+        `Email: ${studentEmail || 'N/A'}\n` +
+        `Day: ${day}\n` +
+        `Time: ${startTime} - ${endTime}\n\n` +
+        `This message was generated automatically.`
+      );
+    }
 
-    res.status(201).json({
-      success: true,
-      bookingId: result.insertedId,
-      message: 'Booking confirmed',
-      booking
-    });
-  } catch (error) {
-    console.error('Error creating booking:', error);
-    res.status(500).json({ error: 'Failed to create booking' });
-  }
+  const result = await db.collection('Bookings').insertOne(booking);
+
+  res.status(201).json({
+    success: true,
+    bookingId: result.insertedId,
+    message: 'Booking confirmed',
+    booking
+  });
+
+} catch (error) {
+  console.error('Error creating booking:', error);
+  res.status(500).json({ error: 'Failed to create booking' });
+}
 });
 
 // Delete a booking
