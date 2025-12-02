@@ -51,7 +51,22 @@ async function load() {
   // Professor info
   const initials = (prof.name || "?")
     .split(" ").map(w => w[0]).filter(Boolean).slice(0,2).join("").toUpperCase();
-  qs("profAvatar").textContent = initials;
+
+  // Avatar: use provided avatar URL (e.g. `prof.avatarUrl`), otherwise
+  // fall back to a generated avatar service (UI Avatars) that renders
+  // a consistent image for each professor name. We set the background
+  // image on the existing `#profAvatar` element so no HTML changes
+  // are required.
+  const avatarEl = qs("profAvatar");
+  const avatarUrl = prof.avatarUrl || prof.photoUrl ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(prof.name || initials)}&size=256&background=2F4858&color=ffffff`;
+
+  avatarEl.textContent = "";
+  avatarEl.style.backgroundImage = `url("${avatarUrl}")`;
+  avatarEl.style.backgroundSize = "cover";
+  avatarEl.style.backgroundPosition = "center";
+  avatarEl.style.backgroundRepeat = "no-repeat";
+  avatarEl.setAttribute("aria-label", prof.name || "Professor");
   qs("profName").textContent = prof.name || "Professor";
   qs("profDept").textContent = prof.department || "";
   qs("profEmail").textContent = prof.email || "";

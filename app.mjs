@@ -1,6 +1,8 @@
 import 'dotenv/config'
 import { connectDB, getDB } from './db/mongo.mjs'
 import express from 'express'
+import multer from 'multer'
+import fs from 'fs/promises'
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { ObjectId } from 'mongodb';
@@ -116,6 +118,43 @@ app.get('/schedule', (req, res) => {
   res.sendFile(join(__dirname, 'public', 'schedule.html'));
 });
 
+// Upload professor avatar (multipart/form-data, field name: `avatar`)
+// Saves file to `public/images/professors/<profId>.<ext>` and updates professor doc
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+
+app.post('/api/professors/:id/avatar', upload.single('avatar'), async (req, res) => {
+  try {
+    const db = getDB();
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid professor id' });
+
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    // Determine extension
+    const mime = req.file.mimetype || '';
+    const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
+
+    const destDir = join(__dirname, 'public', 'images', 'professors');
+    await fs.mkdir(destDir, { recursive: true });
+    const filename = `${id}.${ext}`;
+    const destPath = join(destDir, filename);
+
+    // Write buffer to disk
+    await fs.writeFile(destPath, req.file.buffer);
+
+    const avatarUrl = `/images/professors/${filename}`;
+    await db.collection('Professors').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { avatarUrl } }
+    );
+
+    res.json({ success: true, avatarUrl });
+  } catch (err) {
+    console.error('Avatar upload error:', err);
+    res.status(500).json({ error: 'Failed to upload avatar' });
+  }
+});
+
 // read professors
 app.get('/api/professors', async (_req, res) => {
   try {
@@ -134,7 +173,7 @@ app.get("/api/professors/:id", async (req, res) => {
     const _id = new ObjectId(req.params.id);
     const prof = await db.collection("Professors").findOne(
       { _id },
-      { projection: { name: 1, department: 1, office: 1, email: 1, officeHoursTemplate: 1, timezone: 1 } }
+      { projection: { name: 1, department: 1, office: 1, email: 1, officeHoursTemplate: 1, timezone: 1, avatarUrl: 1 } }
     );
     if (!prof) return res.status(404).json({ error: "Professor not found" });
     res.json(prof);
