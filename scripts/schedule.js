@@ -7,20 +7,22 @@ const daysOfWeek = ["Mon","Tue","Wed","Thu","Fri"];
 
 let currentWeekOffset = 0;
 let prof = null;
-let slotsFromDb = []; 
+let slotsFromDb = [];
+let bookingsFromDb = [];
 let selectedSlot = null;
 
 function getParam(name){ return new URL(location.href).searchParams.get(name); }
 function qs(id){ return document.getElementById(id); }
 
-// load professor and schedule data
+// Load professor and schedule data
 async function load() {
   const id = getParam("professorId");
   if (!id) { alert("Missing professorId"); return; }
 
-  const [pRes, sRes] = await Promise.all([
+  const [pRes, sRes, bRes] = await Promise.all([
     fetch(`/api/professors/${encodeURIComponent(id)}`),
-    fetch(`/api/professors/${encodeURIComponent(id)}/schedule`)
+    fetch(`/api/professors/${encodeURIComponent(id)}/schedule`),
+    fetch(`/api/professors/${encodeURIComponent(id)}/bookings`)
   ]);
 
   if (!pRes.ok) {
@@ -31,12 +33,22 @@ async function load() {
     const t = await sRes.text().catch(()=> "");
     throw new Error(`Schedule fetch failed: ${sRes.status} ${t}`);
   }
+  if (!bRes.ok) {
+    const t = await bRes.text().catch(()=> "");
+    throw new Error(`Bookings fetch failed: ${bRes.status} ${t}`);
+  }
 
   prof = await pRes.json();
   const schedule = await sRes.json();
+  const bookingsData = await bRes.json();
+  
   slotsFromDb = Array.isArray(schedule.slots) ? schedule.slots : [];
+  bookingsFromDb = Array.isArray(bookingsData.bookings) ? bookingsData.bookings : [];
 
-  // header info
+  console.log('Loaded slots:', slotsFromDb);
+  console.log('Loaded bookings:', bookingsFromDb);
+
+  // Professor info
   const initials = (prof.name || "?")
     .split(" ").map(w => w[0]).filter(Boolean).slice(0,2).join("").toUpperCase();
   qs("profAvatar").textContent = initials;
@@ -49,7 +61,7 @@ async function load() {
   renderCalendar();
 }
 
-// week date calculations
+// Week date calculations
 function getWeekDates() {
   const today = new Date();
   const dow = today.getDay(); 
@@ -70,13 +82,12 @@ function updateWeekDisplay() {
     `${start.toLocaleDateString("en-US", fmt)} - ${end.toLocaleDateString("en-US", fmt)}`;
 }
 
-// slot status check
-function isBooked(day, time) {
-  const s = slotsFromDb.find(x => x.day === day && x.time === time);
-  return s?.status === "booked";
+// Slot status check
+function isBooked(day, startTime, endTime) {
+  return bookingsFromDb.some(b => b.day === day && b.startTime === startTime && b.endTime === endTime);
 }
 
-// render calendar grid
+// Render a calendar grid
 function renderCalendar() {
   const grid = qs("calendarGrid");
   grid.innerHTML = "";
@@ -97,13 +108,22 @@ function renderCalendar() {
 
     const container = qs(`slots-${day}`);
 
-    timeSlots.forEach(time => {
-      const booked = isBooked(day, time);
+    // Get office hours for this day
+    const daySlots = slotsFromDb.filter(s => s.day === day);
+    
+    if (daySlots.length === 0) {
+      container.innerHTML = '<div class="no-hours">No office hours</div>';
+      return;
+    }
+
+    daySlots.forEach(slot => {
+      const booked = isBooked(day, slot.startTime, slot.endTime);
       const el = document.createElement("div");
       el.className = `time-slot ${booked ? "booked" : "available"}`;
-      el.textContent = time;
+      el.textContent = slot.startTime;
       el.dataset.day = day;
-      el.dataset.time = time;
+      el.dataset.startTime = slot.startTime;
+      el.dataset.endTime = slot.endTime;
 
       if (!booked) el.onclick = () => selectSlot(el);
 
@@ -112,13 +132,17 @@ function renderCalendar() {
   });
 }
 
-// slot selection and booking
+// Slot selection and booking
 function selectSlot(el) {
   const prev = document.querySelector(".time-slot.selected");
   if (prev) prev.classList.remove("selected");
 
   el.classList.add("selected");
-  selectedSlot = { day: el.dataset.day, time: el.dataset.time };
+  selectedSlot = { 
+    day: el.dataset.day, 
+    startTime: el.dataset.startTime,
+    endTime: el.dataset.endTime
+  };
 
   const dates = getWeekDates();
   const date = dates[daysOfWeek.indexOf(selectedSlot.day)];
@@ -128,7 +152,7 @@ function selectSlot(el) {
 
   qs("bookingDetails").innerHTML = `
     <p><strong>Day:</strong> ${dateStr}</p>
-    <p><strong>Time:</strong> ${selectedSlot.time}</p>
+    <p><strong>Time:</strong> ${selectedSlot.startTime} - ${selectedSlot.endTime}</p>
     <p><strong>Professor:</strong> ${prof?.name || "Professor"}</p>
   `;
   qs("bookingPanel").classList.add("active");
@@ -137,14 +161,40 @@ function selectSlot(el) {
 function confirmBooking() {
   if (!selectedSlot) return;
 
-  // mark slot as booked 
-  const i = slotsFromDb.findIndex(s => s.day === selectedSlot.day && s.time === selectedSlot.time);
-  if (i >= 0) slotsFromDb[i].status = "booked";
-  else slotsFromDb.push({ day: selectedSlot.day, time: selectedSlot.time, status: "booked" });
-
-  alert(`Booked ${selectedSlot.day} at ${selectedSlot.time}`);
-  cancelBooking();
-  renderCalendar();
+  // Save booking to database
+  fetch(`/api/professors/${getParam("professorId")}/bookings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      day: selectedSlot.day,
+      startTime: selectedSlot.startTime,
+      endTime: selectedSlot.endTime,
+      studentName: 'Student',
+      studentEmail: null
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      // Add to the local bookings
+      bookingsFromDb.push({
+        day: selectedSlot.day,
+        startTime: selectedSlot.startTime,
+        endTime: selectedSlot.endTime,
+        _id: data.bookingId
+      });
+      
+      alert(`Booked ${selectedSlot.day} at ${selectedSlot.startTime}`);
+      cancelBooking();
+      renderCalendar();
+    } else {
+      alert('Error: ' + (data.error || 'Could not book slot'));
+    }
+  })
+  .catch(err => {
+    console.error('Booking error:', err);
+    alert('Error booking slot: ' + err.message);
+  });
 }
 
 function cancelBooking() {
@@ -154,7 +204,7 @@ function cancelBooking() {
   qs("bookingPanel").classList.remove("active");
 }
 
-// week nav 
+// Week navigation stuff
 function changeWeek(offset) {
   currentWeekOffset += offset;
   updateWeekDisplay();

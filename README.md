@@ -18,6 +18,11 @@ Eliminates the repetitive, tedious task of emailing back and forth to find mutua
 *(Goal: Decrease average coordination time and avoid manual email scheduling.)*
 
 ### 👤 User Story
-As a university student,  
-I want to see which professors are currently available for office hours based on my own schedule,  
-so that I can plan my meetings efficiently and provide feedback afterward without wasting time on scheduling emails.
+**As a** university student,  
+**I want** to see which professors are currently available for office hours  
+**So that** I can plan my meetings efficiently
+
+---
+
+### 🔗 Convenient Links:
+[Wiki page](https://github.com/JustinAlkire/CodeBlooded/wiki) | [Our Product](https://github.com/JustinAlkire/CodeBlooded/wiki/%F0%9F%92%ADPRODUCT-OVERVIEW) | [Official Link](http://officehours.barrycumbie.com/login.html)
