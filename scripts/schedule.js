@@ -140,7 +140,12 @@ function renderCalendar() {
       el.dataset.startTime = slot.startTime;
       el.dataset.endTime = slot.endTime;
 
-      if (!booked) el.onclick = () => selectSlot(el);
+      if (!booked) {
+        el.onclick = () => selectSlot(el);
+      } else {
+        // Booked slots now clickable to cancel
+        el.onclick = () => selectBookedSlot(el);
+      }
 
       container.appendChild(el);
     });
@@ -156,7 +161,9 @@ function selectSlot(el) {
   selectedSlot = { 
     day: el.dataset.day, 
     startTime: el.dataset.startTime,
-    endTime: el.dataset.endTime
+    endTime: el.dataset.endTime,
+    // Mark as new booking, not just cancel
+    bookingId: null
   };
 
   const dates = getWeekDates();
@@ -170,13 +177,63 @@ function selectSlot(el) {
     <p><strong>Time:</strong> ${selectedSlot.startTime} - ${selectedSlot.endTime}</p>
     <p><strong>Professor:</strong> ${prof?.name || "Professor"}</p>
   `;
+  
+  // Ensure button text is "Confirm Booking" and set onclick handler
+  const btn = qs("bookingPanel").querySelector(".btn-primary");
+  btn.textContent = "Confirm Booking";
+  btn.onclick = () => confirmBooking();
+  
+  qs("bookingPanel").classList.add("active");
+}
+
+// Handling on clicking a booked slot to cancel it
+function selectBookedSlot(el) {
+  const booking = bookingsFromDb.find(b => 
+    b.day === el.dataset.day && 
+    b.startTime === el.dataset.startTime && 
+    b.endTime === el.dataset.endTime
+  );
+
+  if (!booking) return;
+
+  selectedSlot = {
+    day: el.dataset.day,
+    startTime: el.dataset.startTime,
+    endTime: el.dataset.endTime,
+    bookingId: booking._id
+  };
+
+  const dates = getWeekDates();
+  const date = dates[daysOfWeek.indexOf(selectedSlot.day)];
+  const dateStr = date.toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric"
+  });
+
+  qs("bookingDetails").innerHTML = `
+    <p><strong>Day:</strong> ${dateStr}</p>
+    <p><strong>Time:</strong> ${selectedSlot.startTime} - ${selectedSlot.endTime}</p>
+    <p><strong>Professor:</strong> ${prof?.name || "Professor"}</p>
+    <p style="color: #dc2626; margin-top: 0.5rem;"><em>This slot is booked by you.</em></p>
+  `;
+  
+  // Ensure the button text is "Cancel Booking" and set onclick handler
+  const btn = qs("bookingPanel").querySelector(".btn-primary");
+  btn.textContent = "Cancel Booking";
+  btn.onclick = () => cancelExistingBooking();
+  
   qs("bookingPanel").classList.add("active");
 }
 
 function confirmBooking() {
   if (!selectedSlot) return;
 
-  // Save booking to database
+  // If this is a booked slot being cancelled
+  if (selectedSlot.bookingId) {
+    cancelExistingBooking();
+    return;
+  }
+
+  // Save new booking to database
   fetch(`/api/professors/${getParam("professorId")}/bookings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -200,7 +257,7 @@ function confirmBooking() {
       });
       
       alert(`Booked ${selectedSlot.day} at ${selectedSlot.startTime}`);
-      cancelBooking();
+      closeBookingPanel();
       renderCalendar();
     } else {
       alert('Error: ' + (data.error || 'Could not book slot'));
@@ -212,11 +269,41 @@ function confirmBooking() {
   });
 }
 
-function cancelBooking() {
+// Cancel an existing booking
+function cancelExistingBooking() {
+  if (!selectedSlot || !selectedSlot.bookingId) return;
+
+  fetch(`/api/bookings/${selectedSlot.bookingId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' }
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      // Remove from local bookings
+      bookingsFromDb = bookingsFromDb.filter(b => b._id !== selectedSlot.bookingId);
+      
+      alert(`Cancelled booking for ${selectedSlot.day} at ${selectedSlot.startTime}`);
+      closeBookingPanel();
+      renderCalendar();
+    } else {
+      alert('Error: ' + (data.error || 'Could not cancel booking'));
+    }
+  })
+  .catch(err => {
+    console.error('Cancel error:', err);
+    alert('Error cancelling booking: ' + err.message);
+  });
+}
+
+function closeBookingPanel() {
   const prev = document.querySelector(".time-slot.selected");
   if (prev) prev.classList.remove("selected");
   selectedSlot = null;
   qs("bookingPanel").classList.remove("active");
+  // "Confirm Booking" for available slots
+  qs("bookingPanel").querySelector(".btn-primary").textContent = "Confirm Booking";
+  qs("bookingPanel").querySelector(".btn-primary").onclick = () => confirmBooking();
 }
 
 // Week navigation stuff
@@ -224,7 +311,7 @@ function changeWeek(offset) {
   currentWeekOffset += offset;
   updateWeekDisplay();
   renderCalendar();
-  cancelBooking();
+  closeBookingPanel();
 }
 
 // bootstrap load
@@ -233,4 +320,5 @@ document.addEventListener("DOMContentLoaded", load);
 // expose handlers
 window.changeWeek = changeWeek;
 window.confirmBooking = confirmBooking;
-window.cancelBooking = cancelBooking;
+window.closeBookingPanel = closeBookingPanel;
+window.selectBookedSlot = selectBookedSlot;
